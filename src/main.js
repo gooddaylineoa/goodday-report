@@ -617,3 +617,109 @@ document.getElementById('btn-submit-rating').onclick = async () => {
     showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
   }
 };
+
+// ================= หน้าแอดมิน (เข้าผ่าน ?admin=1) =================
+
+let adminSecretStored = sessionStorage.getItem('adminSecret') || null;
+
+// เช็คว่าเปิดผ่าน URL ที่มี ?admin=1 ไหม
+const urlParams = new URLSearchParams(window.location.search);
+const isAdminMode = urlParams.get('admin') === '1';
+
+if (isAdminMode) {
+  // ข้าม flow ปกติ (LIFF login) ไปเข้าโหมดแอดมินแทน
+  if (adminSecretStored) {
+    showView('admin-panel-view');
+    loadAdminReports();
+  } else {
+    showView('admin-login-view');
+  }
+}
+
+document.getElementById('btn-admin-login').onclick = async () => {
+  const pass = document.getElementById('admin-password-input').value;
+  const errBox = document.getElementById('admin-login-error');
+
+  if (!pass) {
+    errBox.innerText = 'กรุณากรอกรหัสผ่าน';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  // ทดสอบรหัสผ่านด้วยการยิง API เปล่าๆ (ยังไม่มี reportId จริง แต่เช็ค adminSecret ได้)
+  showLoading('กำลังตรวจสอบ...');
+  const res = await fetch('/api/admin-update-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminSecret: pass, reportId: 'test', newStatus: 'test' })
+  });
+  hideLoading();
+
+  if (res.status === 403) {
+    errBox.innerText = 'รหัสผ่านไม่ถูกต้อง';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  // รหัสผ่านถูกต้อง (error อื่นๆ เช่น "ไม่พบเรื่องนี้" ถือว่าผ่านด่านรหัสผ่านแล้ว)
+  adminSecretStored = pass;
+  sessionStorage.setItem('adminSecret', pass);
+  showView('admin-panel-view');
+  loadAdminReports();
+};
+
+async function loadAdminReports() {
+  const container = document.getElementById('admin-reports-list');
+  container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">กำลังโหลด...</p>';
+
+  const q = query(collection(db, 'reports'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+
+  const reports = [];
+  snap.forEach(d => reports.push({ id: d.id, ...d.data() }));
+
+  if (reports.length === 0) {
+    container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">ยังไม่มีเรื่องแจ้ง</p>';
+    return;
+  }
+
+  container.innerHTML = reports.map(r => `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+      <div class="flex gap-3 mb-3">
+        <img src="${r.imageUrl || ''}" class="w-16 h-16 rounded-xl object-cover shrink-0 bg-gray-100">
+        <div class="flex-1">
+          <h4 class="font-black text-gray-800 text-base leading-tight mb-1">${r.title}</h4>
+          <p class="text-sm text-gray-400">${r.reportCode} | ${categoryLabels[r.category] || r.category}</p>
+        </div>
+      </div>
+      <p class="text-sm text-gray-600 mb-3">${r.description}</p>
+      <select class="form-input admin-status-select" data-report-id="${r.id}">
+        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>รอรับเรื่อง</option>
+        <option value="inprogress" ${r.status === 'inprogress' ? 'selected' : ''}>กำลังดำเนินการ</option>
+        <option value="resolved" ${r.status === 'resolved' ? 'selected' : ''}>เสร็จสิ้น</option>
+        <option value="cancelled" ${r.status === 'cancelled' ? 'selected' : ''}>ยกเลิก</option>
+      </select>
+    </div>
+  `).join('');
+
+  document.querySelectorAll('.admin-status-select').forEach(select => {
+    select.onchange = async () => {
+      const reportId = select.dataset.reportId;
+      const newStatus = select.value;
+
+      showLoading('กำลังอัปเดตสถานะและแจ้งเตือน...');
+      const res = await fetch('/api/admin-update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminSecret: adminSecretStored, reportId, newStatus })
+      });
+      hideLoading();
+
+      if (res.ok) {
+        showToast('อัปเดตสถานะสำเร็จ ส่งแจ้งเตือนแล้ว', 'success');
+      } else {
+        showToast('อัปเดตไม่สำเร็จ', 'error');
+      }
+    };
+  });
+}
