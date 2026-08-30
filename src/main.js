@@ -448,3 +448,172 @@ document.getElementById('btn-report-done').onclick = () => {
   setTab('history');
   showView('history-view');
 };
+
+// ================= ประวัติคำร้อง =================
+
+let allMyReports = [];
+let currentReportDetail = null;
+
+document.getElementById('hist-tab-home').onclick = () => { setTab('home'); showView('home-view'); };
+document.getElementById('hist-tab-report').onclick = () => { setTab('report'); showView('report-view'); renderReportCategoryGrid(); };
+document.getElementById('hist-tab-history').onclick = () => { setTab('history'); showView('history-view'); loadMyReports(); };
+
+document.getElementById('tab-history').onclick = () => {
+  setTab('history');
+  showView('history-view');
+  loadMyReports();
+};
+
+const statusLabel = { pending: 'รอรับเรื่อง', inprogress: 'กำลังดำเนินการ', resolved: 'เสร็จสิ้น', cancelled: 'ยกเลิกแล้ว' };
+const statusColor = {
+  pending: 'bg-orange-50 text-orange-600',
+  inprogress: 'bg-amber-50 text-amber-600',
+  resolved: 'bg-emerald-50 text-emerald-600',
+  cancelled: 'bg-gray-100 text-gray-400'
+};
+
+async function loadMyReports() {
+  const container = document.getElementById('history-list-container');
+  container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">กำลังโหลด...</p>';
+
+  const q = query(collection(db, 'users', currentUid, 'myReports'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+
+  allMyReports = [];
+  snap.forEach(d => allMyReports.push({ id: d.id, ...d.data() }));
+
+  if (allMyReports.length === 0) {
+    container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">ยังไม่มีประวัติการแจ้งเหตุ</p>';
+    return;
+  }
+
+  container.innerHTML = allMyReports.map(r => `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center gap-4 cursor-pointer" onclick="openReportDetail('${r.id}')">
+      <img src="${r.imageUrl || ''}" class="w-16 h-16 rounded-xl object-cover shrink-0 bg-gray-100">
+      <div class="flex-1">
+        <h4 class="font-black text-gray-800 text-base leading-tight mb-1">${r.title}</h4>
+        <p class="text-sm text-gray-400">${r.reportCode}</p>
+      </div>
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${statusColor[r.status] || ''}">${statusLabel[r.status] || r.status}</span>
+    </div>
+  `).join('');
+}
+
+function openReportDetail(reportId) {
+  const r = allMyReports.find(x => x.id === reportId);
+  if (!r) return;
+  currentReportDetail = r;
+
+  document.getElementById('rd-image').src = r.imageUrl || '';
+  document.getElementById('rd-title').innerText = r.title;
+  document.getElementById('rd-description').innerText = r.description || '';
+  document.getElementById('rd-code').innerText = r.reportCode;
+  document.getElementById('rd-map-link').href = r.mapLink || '#';
+  document.getElementById('rd-category-badge').innerText = categoryLabels[r.category] || r.category;
+
+  const badge = document.getElementById('rd-status-badge');
+  badge.innerText = statusLabel[r.status] || r.status;
+  badge.className = `text-sm font-bold px-3 py-1.5 rounded-full ${statusColor[r.status] || ''}`;
+
+  // ปุ่มยกเลิก: โชว์เฉพาะสถานะ pending และยังไม่เกิน 7 วัน
+  const cancelBtn = document.getElementById('btn-cancel-report');
+  const daysPassed = r.createdAt ? (new Date() - r.createdAt.toDate()) / (1000 * 60 * 60 * 24) : 999;
+  cancelBtn.classList.toggle('hidden', !(r.status === 'pending' && daysPassed <= 7));
+
+  // กล่องให้คะแนน / แสดงคะแนนที่ให้แล้ว
+  const ratingBox = document.getElementById('rd-rating-box');
+  const ratedBox = document.getElementById('rd-rated-box');
+
+  if (r.status === 'resolved' && !r.rating) {
+    ratingBox.classList.remove('hidden');
+    ratedBox.classList.add('hidden');
+    selectedRdRating = 0;
+    renderRdRatingStars();
+    document.getElementById('rd-rating-comment').value = '';
+  } else if (r.rating) {
+    ratingBox.classList.add('hidden');
+    ratedBox.classList.remove('hidden');
+    document.getElementById('rd-rated-stars').innerText = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+  } else {
+    ratingBox.classList.add('hidden');
+    ratedBox.classList.add('hidden');
+  }
+
+  showView('report-detail-view');
+}
+window.openReportDetail = openReportDetail;
+
+document.getElementById('btn-back-report-detail').onclick = () => showView('history-view');
+
+document.getElementById('btn-cancel-report').onclick = async () => {
+  if (!currentReportDetail) return;
+  if (!confirm('ยืนยันยกเลิกคำร้องนี้หรือไม่?')) return;
+
+  showLoading('กำลังยกเลิกคำร้อง...');
+  try {
+    const res = await fetch('/api/cancel-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: currentUid, reportId: currentReportDetail.id })
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (!res.ok) { showToast(data.error || 'ยกเลิกไม่สำเร็จ', 'error'); return; }
+
+    showToast('ยกเลิกคำร้องสำเร็จ', 'success');
+    showView('history-view');
+    await loadMyReports();
+  } catch (err) {
+    hideLoading();
+    showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+  }
+};
+
+// --- ให้คะแนน ---
+let selectedRdRating = 0;
+
+function renderRdRatingStars() {
+  document.getElementById('rd-rating-stars').innerHTML = [1, 2, 3, 4, 5].map(n => `
+    <button data-star="${n}" class="rd-star-btn text-4xl ${n <= selectedRdRating ? 'text-amber-400' : 'text-gray-200'}">
+      <i class="fa-solid fa-star"></i>
+    </button>
+  `).join('');
+
+  document.querySelectorAll('.rd-star-btn').forEach(btn => {
+    btn.onclick = () => { selectedRdRating = Number(btn.dataset.star); renderRdRatingStars(); };
+  });
+}
+
+document.getElementById('btn-submit-rating').onclick = async () => {
+  if (selectedRdRating === 0) {
+    showToast('กรุณาเลือกจำนวนดาวก่อน', 'error');
+    return;
+  }
+
+  showLoading('กำลังส่งคะแนน...');
+  try {
+    const res = await fetch('/api/submit-rating', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: currentUid,
+        reportId: currentReportDetail.id,
+        rating: selectedRdRating,
+        comment: document.getElementById('rd-rating-comment').value.trim()
+      })
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (!res.ok) { showToast(data.error || 'ส่งคะแนนไม่สำเร็จ', 'error'); return; }
+
+    showToast('ขอบคุณสำหรับความคิดเห็น!', 'success');
+    showView('history-view');
+    await loadMyReports();
+    await loadHomeData(); // รีเฟรชหน้าหลักให้เห็นคะแนนใหม่ด้วย
+  } catch (err) {
+    hideLoading();
+    showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+  }
+};
