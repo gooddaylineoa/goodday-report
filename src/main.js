@@ -1,7 +1,11 @@
 import { auth, db } from './firebase.js';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, getDocs, collection, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { initLineAuth } from './lineAuth.js';
+
+// 🆕 ย้ายมาไว้บนสุดตรงนี้ ก่อนใช้งานที่ไหนทั้งหมด
+const urlParams = new URLSearchParams(window.location.search);
+const isAdminMode = urlParams.get('admin') === '1';
 
 function showToast(message, type = 'info', duration = 3200) {
   const container = document.getElementById('toast-container');
@@ -40,6 +44,8 @@ document.getElementById('btn-go-register').onclick = () => {
 };
 
 onAuthStateChanged(auth, async (user) => {
+  if (isAdminMode) return;   // 🆕 ถ้าอยู่โหมดแอดมิน ไม่ต้องยุ่งกับ flow สมาชิกปกติเลย
+
   if (user) {
     currentUid = user.uid;
     const snap = await getDoc(doc(db, 'users', currentUid));
@@ -621,10 +627,6 @@ document.getElementById('btn-submit-rating').onclick = async () => {
 // ================= หน้าแอดมิน (เข้าผ่าน ?admin=1) =================
 
 let adminSecretStored = sessionStorage.getItem('adminSecret') || null;
-
-// เช็คว่าเปิดผ่าน URL ที่มี ?admin=1 ไหม
-const urlParams = new URLSearchParams(window.location.search);
-const isAdminMode = urlParams.get('admin') === '1';
 
 if (isAdminMode) {
   // ข้าม flow ปกติ (LIFF login) ไปเข้าโหมดแอดมินแทน
