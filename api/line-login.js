@@ -1,6 +1,6 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import jwt from 'jsonwebtoken';
 
 // ตั้งค่า Firebase Admin แค่ครั้งเดียว (กันการรันซ้ำ)
 if (!getApps().length) {
