@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goodday - แจ้งเหตุ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Sarabun', sans-serif; background-color: #F3F4F6; }
+    .theme-pink { background-color: #d81b60; }
+    .theme-text { color: #d81b60; }
+    .form-input {
+      width: 100%; border: 1px solid #D1D5DB; border-radius: 0.75rem; padding: 0.75rem;
+      font-size: 1rem; background-color: white; color: #374151; font-family: 'Sarabun';
+    }
+    .page-section { display: none !important; }
+    .page-section.active { display: block !important; }
+    .page-section.flex.active { display: flex !important; }
+  </style>
+</head>
+<body class="antialiased text-gray-800">
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] w-11/12 max-w-md flex flex-col gap-2"></div>
+
+  <div class="max-w-md mx-auto bg-white min-h-screen relative shadow-lg">
+
+    <div id="loading-view" class="page-section active flex items-center justify-center min-h-screen">
+      <div class="text-center">
+        <div class="w-12 h-12 border-4 border-pink-100 border-t-pink-600 rounded-full animate-spin mx-auto mb-4"></div>
+        <p class="text-gray-400 text-lg font-bold">กำลังเข้าสู่ระบบ...</p>
+      </div>
+    </div>
+
+    <div id="not-member-view" class="page-section p-6 pt-16 text-center">
+      <div class="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">
+        <i class="fa-solid fa-user-lock"></i>
+      </div>
+      <h2 class="text-xl font-black text-gray-800 mb-2">ยังไม่ได้สมัครสมาชิก</h2>
+      <p class="text-gray-500 text-base mb-6">กรุณาสมัครสมาชิก Goodday ก่อน<br>จึงจะใช้งานระบบแจ้งเหตุได้</p>
+      <button id="btn-go-register" class="w-full theme-pink text-white py-4 rounded-2xl font-bold text-lg">ไปสมัครสมาชิก</button>
+    </div>
+
+    <!-- หน้าหลัก -->
+    <div id="home-view" class="page-section bg-gray-50 min-h-screen pb-24">
+      <div class="theme-pink text-white p-4 flex items-center justify-between sticky top-0 z-40">
+        <h2 class="text-xl font-bold"><i class="fa-solid fa-bullhorn mr-2"></i>แจ้งปัญหาชุมชน</h2>
+        <div class="bg-emerald-400 text-white text-sm font-bold px-3 py-1.5 rounded-full flex items-center">
+          <i class="fa-solid fa-circle-check mr-1"></i> <span id="header-name">ผู้ใช้งาน</span>
+        </div>
+      </div>
+
+      <div class="p-4">
+        <!-- สถิติรวม -->
+        <div class="grid grid-cols-3 gap-3 mb-5">
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 text-center">
+            <p class="text-2xl font-black theme-text" id="stat-total">0</p>
+            <p class="text-sm text-gray-500 font-bold mt-1">เรื่องทั้งหมด</p>
+          </div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 text-center">
+            <p class="text-2xl font-black text-amber-500" id="stat-avg-rating">-</p>
+            <p class="text-sm text-gray-500 font-bold mt-1">คะแนนเฉลี่ย ⭐</p>
+          </div>
+          <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 text-center">
+            <p class="text-2xl font-black text-emerald-500" id="stat-satisfaction">-%</p>
+            <p class="text-sm text-gray-500 font-bold mt-1">พึงพอใจ</p>
+          </div>
+        </div>
+
+        <!-- การ์ดเรื่องล่าสุด -->
+        <h3 class="text-lg font-black text-gray-800 mb-3">เรื่องล่าสุด</h3>
+        <div id="recent-reports-scroll" class="flex overflow-x-auto gap-3 pb-4 mb-5 -mx-4 px-4"></div>
+
+        <!-- ค้นหา + กรอง -->
+        <div class="flex gap-2 mb-4">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input id="home-search" type="text" class="form-input pl-11" placeholder="ค้นหาคำสำคัญ...">
+          </div>
+          <select id="home-category-filter" class="form-input" style="width: auto;">
+            <option value="all">ทุกหมวดหมู่</option>
+          </select>
+        </div>
+
+        <!-- โหมดแผนที่ -->
+        <div class="flex gap-2 mb-3">
+          <button id="map-mode-marker" class="flex-1 py-2.5 rounded-full text-base font-bold border-2 theme-pink text-white border-transparent">Marker</button>
+          <button id="map-mode-heatmap" class="flex-1 py-2.5 rounded-full text-base font-bold border-2 bg-white text-gray-600 border-gray-200">Heatmap</button>
+          <button id="map-mode-cluster" class="flex-1 py-2.5 rounded-full text-base font-bold border-2 bg-white text-gray-600 border-gray-200">Clustering</button>
+        </div>
+        <div id="home-map" class="w-full h-72 rounded-2xl overflow-hidden mb-5 border border-gray-200"></div>
+
+        <!-- สรุปสถานะ -->
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div class="bg-orange-50 rounded-2xl p-4 text-center">
+            <p class="text-3xl font-black text-orange-500" id="status-pending-count">0</p>
+            <p class="text-base font-bold text-orange-600 mt-1">รอรับเรื่อง</p>
+            <p class="text-sm text-orange-400" id="status-pending-pct">0%</p>
+          </div>
+          <div class="bg-amber-50 rounded-2xl p-4 text-center">
+            <p class="text-3xl font-black text-amber-500" id="status-inprogress-count">0</p>
+            <p class="text-base font-bold text-amber-600 mt-1">กำลังดำเนินการ</p>
+            <p class="text-sm text-amber-400" id="status-inprogress-pct">0%</p>
+          </div>
+          <div class="bg-emerald-50 rounded-2xl p-4 text-center">
+            <p class="text-3xl font-black text-emerald-500" id="status-resolved-count">0</p>
+            <p class="text-base font-bold text-emerald-600 mt-1">เสร็จสิ้น</p>
+            <p class="text-sm text-emerald-400" id="status-resolved-pct">0%</p>
+          </div>
+          <div class="bg-blue-50 rounded-2xl p-4 text-center">
+            <p class="text-3xl font-black text-blue-500" id="status-satisfaction-count">-%</p>
+            <p class="text-base font-bold text-blue-600 mt-1">พอใจการแก้ไข</p>
+            <p class="text-sm text-blue-400" id="status-satisfaction-sub">(0 เรื่อง)</p>
+          </div>
+        </div>
+        <div class="w-full bg-gray-200 h-3 rounded-full overflow-hidden flex mb-1">
+          <div id="status-bar-pending" class="bg-orange-400 h-full"></div>
+          <div id="status-bar-inprogress" class="bg-amber-400 h-full"></div>
+          <div id="status-bar-resolved" class="bg-emerald-400 h-full"></div>
+        </div>
+        <p class="text-sm text-gray-400 text-right">ภาพรวมสถานะทั้งหมด <span id="status-total-label">0 เรื่อง</span></p>
+      </div>
+
+      <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex z-50">
+        <button id="tab-home" class="flex-1 py-3 flex flex-col items-center gap-1 theme-text">
+          <i class="fa-solid fa-chart-simple text-xl"></i><span class="text-sm font-bold">หน้าหลัก</span>
+        </button>
+        <button id="tab-report" class="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
+          <i class="fa-solid fa-comment-dots text-xl"></i><span class="text-sm font-bold">แจ้งปัญหา</span>
+        </button>
+        <button id="tab-history" class="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
+          <i class="fa-solid fa-clock-rotate-left text-xl"></i><span class="text-sm font-bold">ประวัติคำร้อง</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- แจ้งปัญหา (โครงไว้ก่อน เฟสถัดไปทำเนื้อหาจริง) -->
+    <div id="report-view" class="page-section bg-gray-50 min-h-screen pb-24">
+      <div class="theme-pink text-white p-4"><h2 class="text-xl font-bold">แจ้งปัญหา</h2></div>
+      <div class="p-6 text-center text-gray-400 text-lg">🚧 กำลังพัฒนา (เฟสถัดไป)</div>
+    </div>
+
+    <!-- ประวัติคำร้อง (โครงไว้ก่อน) -->
+    <div id="history-view" class="page-section bg-gray-50 min-h-screen pb-24">
+      <div class="theme-pink text-white p-4"><h2 class="text-xl font-bold">ประวัติคำร้อง</h2></div>
+      <div class="p-6 text-center text-gray-400 text-lg">🚧 กำลังพัฒนา (เฟสถัดไป)</div>
+    </div>
+
+    <div id="loading-overlay" class="fixed inset-0 bg-black/50 z-[10000] hidden flex-col items-center justify-center">
+      <div class="w-14 h-14 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+      <p class="text-white font-bold text-lg mt-4" id="loading-text">กำลังประมวลผล...</p>
+    </div>
+
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
