@@ -142,9 +142,76 @@
     </div>
 
     <!-- แจ้งปัญหา (โครงไว้ก่อน เฟสถัดไปทำเนื้อหาจริง) -->
-    <div id="report-view" class="page-section bg-gray-50 min-h-screen pb-24">
-      <div class="theme-pink text-white p-4"><h2 class="text-xl font-bold">แจ้งปัญหา</h2></div>
-      <div class="p-6 text-center text-gray-400 text-lg">🚧 กำลังพัฒนา (เฟสถัดไป)</div>
+    <div id="report-view" class="page-section bg-gray-50 min-h-screen pb-10">
+      <div class="theme-pink text-white p-4 sticky top-0 z-40">
+        <h2 class="text-xl font-bold"><i class="fa-solid fa-comment-dots mr-2"></i>แจ้งปัญหา</h2>
+      </div>
+
+      <div class="p-4">
+        <label class="text-lg font-bold text-gray-700 mb-2 block">ภาพถ่ายสถานที่เกิดเหตุ *</label>
+        <div id="report-image-preview-box" class="w-full h-48 bg-white rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center mb-2 overflow-hidden">
+          <div id="report-image-placeholder" class="text-center text-gray-400">
+            <i class="fa-solid fa-camera text-4xl mb-2"></i>
+            <p class="text-base font-bold">แตะเพื่อถ่ายรูป/เลือกภาพ</p>
+          </div>
+          <img id="report-image-preview" class="hidden w-full h-full object-cover">
+        </div>
+        <input type="file" id="report-image-input" accept="image/*" capture="environment" class="w-full text-base text-gray-500 mb-5">
+
+        <label class="text-lg font-bold text-gray-700 mb-2 block">หมวดหมู่ปัญหา *</label>
+        <select id="report-category" class="form-input mb-5">
+          <option value="">-- เลือกหมวดหมู่ --</option>
+          <option value="road">ถนน/ทางเดิน</option>
+          <option value="water">น้ำท่วม/ท่อระบายน้ำ</option>
+          <option value="electric">ไฟฟ้า/แสงสว่าง</option>
+          <option value="waste">ขยะ/ความสะอาด</option>
+          <option value="safety">ความปลอดภัย</option>
+          <option value="other">อื่นๆ</option>
+        </select>
+
+        <label class="text-lg font-bold text-gray-700 mb-2 block">หัวข้อปัญหา *</label>
+        <input id="report-title" type="text" class="form-input mb-5" placeholder="เช่น ไฟดับหน้าซอย 5">
+
+        <label class="text-lg font-bold text-gray-700 mb-2 block">ปักหมุดสถานที่ *</label>
+        <p class="text-base text-gray-500 mb-3">แตะบนแผนที่เพื่อปักหมุด หรือกดปุ่มใช้ตำแหน่งปัจจุบัน</p>
+        <button id="btn-use-current-location" class="w-full bg-blue-50 text-blue-600 py-3 rounded-xl font-bold text-lg mb-3">
+          <i class="fa-solid fa-location-crosshairs mr-2"></i>ใช้ตำแหน่งปัจจุบันของฉัน
+        </button>
+        <div id="report-map" class="w-full h-64 rounded-2xl overflow-hidden mb-2 border border-gray-200"></div>
+        <p id="report-location-label" class="text-base text-gray-400 mb-5">ยังไม่ได้ปักหมุด</p>
+
+        <label class="text-lg font-bold text-gray-700 mb-2 block">รายละเอียดปัญหา *</label>
+        <textarea id="report-description" rows="4" class="form-input mb-5" placeholder="อธิบายปัญหาที่พบให้ละเอียด..."></textarea>
+
+        <div id="report-error" class="bg-red-50 text-red-600 text-lg p-3 rounded-lg text-center font-bold hidden mb-4"></div>
+        <button id="btn-submit-report" class="w-full theme-pink text-white py-4 rounded-2xl font-black text-xl">ส่งเรื่องแจ้งปัญหา</button>
+      </div>
+
+      <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex z-50">
+        <button id="report-tab-home" class="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
+          <i class="fa-solid fa-chart-simple text-xl"></i><span class="text-sm font-bold">หน้าหลัก</span>
+        </button>
+        <button id="report-tab-report" class="flex-1 py-3 flex flex-col items-center gap-1 theme-text">
+          <i class="fa-solid fa-comment-dots text-xl"></i><span class="text-sm font-bold">แจ้งปัญหา</span>
+        </button>
+        <button id="report-tab-history" class="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
+          <i class="fa-solid fa-clock-rotate-left text-xl"></i><span class="text-sm font-bold">ประวัติคำร้อง</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- สำเร็จ: แสดงรหัสแจ้งเหตุ -->
+    <div id="report-success-view" class="page-section bg-gray-50 min-h-screen flex flex-col items-center justify-center p-6 text-center">
+      <div class="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center text-4xl mb-6">
+        <i class="fa-solid fa-check"></i>
+      </div>
+      <h2 class="text-2xl font-black text-gray-800 mb-2">แจ้งเหตุสำเร็จแล้ว!</h2>
+      <p class="text-gray-500 text-lg mb-6">เจ้าหน้าที่จะตรวจสอบเรื่องของคุณเร็วๆ นี้</p>
+      <div class="bg-white rounded-3xl shadow-md border border-gray-100 p-6 w-full max-w-xs mb-6">
+        <p class="text-gray-400 text-base font-bold mb-1">รหัสแจ้งเหตุ</p>
+        <p id="rs-code" class="text-3xl font-black theme-text tracking-widest">------</p>
+      </div>
+      <button id="btn-report-done" class="w-full max-w-xs theme-pink text-white py-4 rounded-2xl font-black text-lg">ดูในประวัติคำร้อง</button>
     </div>
 
     <!-- ประวัติคำร้อง (โครงไว้ก่อน) -->

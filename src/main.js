@@ -232,3 +232,179 @@ function setMapMode(mode) {
 document.getElementById('map-mode-marker').onclick = () => setMapMode('marker');
 document.getElementById('map-mode-heatmap').onclick = () => setMapMode('heatmap');
 document.getElementById('map-mode-cluster').onclick = () => setMapMode('cluster');
+
+// ================= ฟอร์มแจ้งปัญหา =================
+
+let reportMap = null;
+let reportMarker = null;
+let selectedLat = null;
+let selectedLng = null;
+let selectedImageFile = null;
+
+document.getElementById('report-tab-home').onclick = () => { setTab('home'); showView('home-view'); };
+document.getElementById('report-tab-report').onclick = () => { setTab('report'); showView('report-view'); };
+document.getElementById('report-tab-history').onclick = () => { setTab('history'); showView('history-view'); };
+
+document.getElementById('tab-report').onclick = () => {
+  setTab('report');
+  showView('report-view');
+  initReportMap();
+};
+
+function initReportMap() {
+  if (reportMap) {
+    setTimeout(() => reportMap.invalidateSize(), 100);
+    return;
+  }
+  reportMap = L.map('report-map').setView([13.7563, 100.5018], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(reportMap);
+
+  reportMap.on('click', (e) => {
+    setReportLocation(e.latlng.lat, e.latlng.lng);
+  });
+}
+
+function setReportLocation(lat, lng) {
+  selectedLat = lat;
+  selectedLng = lng;
+
+  if (reportMarker) reportMap.removeLayer(reportMarker);
+  reportMarker = L.marker([lat, lng]).addTo(reportMap);
+  reportMap.setView([lat, lng], 15);
+
+  document.getElementById('report-location-label').innerHTML =
+    `<i class="fa-solid fa-check-circle text-emerald-500 mr-1"></i> ปักหมุดแล้ว: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+document.getElementById('btn-use-current-location').onclick = () => {
+  if (!navigator.geolocation) {
+    showToast('เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง', 'error');
+    return;
+  }
+  showLoading('กำลังค้นหาตำแหน่งของคุณ...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      hideLoading();
+      setReportLocation(pos.coords.latitude, pos.coords.longitude);
+    },
+    (err) => {
+      hideLoading();
+      showToast('ไม่สามารถระบุตำแหน่งได้ กรุณาแตะบนแผนที่แทน', 'error');
+    }
+  );
+};
+
+document.getElementById('report-image-preview-box').onclick = () => {
+  document.getElementById('report-image-input').click();
+};
+
+document.getElementById('report-image-input').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  selectedImageFile = file;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('report-image-preview').src = ev.target.result;
+    document.getElementById('report-image-preview').classList.remove('hidden');
+    document.getElementById('report-image-placeholder').classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+};
+
+document.getElementById('btn-submit-report').onclick = async () => {
+  const title = document.getElementById('report-title').value.trim();
+  const category = document.getElementById('report-category').value;
+  const description = document.getElementById('report-description').value.trim();
+  const errBox = document.getElementById('report-error');
+
+  if (!selectedImageFile) {
+    errBox.innerText = 'กรุณาถ่ายรูป/เลือกภาพประกอบก่อน';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (!category) {
+    errBox.innerText = 'กรุณาเลือกหมวดหมู่ปัญหา';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (!title) {
+    errBox.innerText = 'กรุณากรอกหัวข้อปัญหา';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (selectedLat === null || selectedLng === null) {
+    errBox.innerText = 'กรุณาปักหมุดสถานที่เกิดเหตุ';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  if (!description) {
+    errBox.innerText = 'กรุณากรอกรายละเอียดปัญหา';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  errBox.classList.add('hidden');
+
+  showLoading('กำลังอัปโหลดรูปภาพ...');
+  try {
+    // อัปโหลดรูปขึ้น Cloudinary ก่อน
+    const formData = new FormData();
+    formData.append('file', selectedImageFile);
+    formData.append('upload_preset', 'goodday_unsigned');
+
+    const uploadRes = await fetch('https://api.cloudinary.com/v1_1/l1htg1ks/image/upload', {
+      method: 'POST', body: formData
+    });
+    const uploadData = await uploadRes.json();
+
+    if (!uploadData.secure_url) {
+      hideLoading();
+      showToast('อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่', 'error');
+      return;
+    }
+
+    showLoading('กำลังส่งเรื่องแจ้งปัญหา...');
+
+    const res = await fetch('/api/create-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: currentUid, title, category, description,
+        imageUrl: uploadData.secure_url,
+        lat: selectedLat, lng: selectedLng
+      })
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (!res.ok) {
+      showToast(data.error || 'ส่งเรื่องไม่สำเร็จ', 'error');
+      return;
+    }
+
+    document.getElementById('rs-code').innerText = data.reportCode;
+    showView('report-success-view');
+
+    // เคลียร์ฟอร์ม
+    document.getElementById('report-title').value = '';
+    document.getElementById('report-category').value = '';
+    document.getElementById('report-description').value = '';
+    document.getElementById('report-image-preview').classList.add('hidden');
+    document.getElementById('report-image-placeholder').classList.remove('hidden');
+    document.getElementById('report-location-label').innerText = 'ยังไม่ได้ปักหมุด';
+    selectedLat = null; selectedLng = null; selectedImageFile = null;
+    if (reportMarker) { reportMap.removeLayer(reportMarker); reportMarker = null; }
+
+  } catch (err) {
+    hideLoading();
+    showToast('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', 'error');
+  }
+};
+
+document.getElementById('btn-report-done').onclick = () => {
+  setTab('history');
+  showView('history-view');
+  // เฟส 3 จะเติมฟังก์ชันโหลดประวัติตรงนี้
+};
