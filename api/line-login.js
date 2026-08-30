@@ -2,21 +2,46 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import jwt from 'jsonwebtoken';
 
-// ตั้งค่า Firebase Admin แค่ครั้งเดียว (กันการรันซ้ำ)
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-    })
-  });
+let initError = null;
+
+try {
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY
+          ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+          : undefined
+      })
+    });
+  }
+} catch (e) {
+  initError = e.message;
 }
 
-const adminAuth = getAuth();
-const adminDb = getFirestore();
+const adminDb = getApps().length ? getFirestore() : null;
+
+// สร้าง Firebase Custom Token เอง ด้วยการเซ็น JWT ตรงๆ (ไม่ผ่าน firebase-admin/auth ที่มีปัญหาบน Vercel)
+function createFirebaseCustomToken(uid) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: process.env.FIREBASE_CLIENT_EMAIL,
+    sub: process.env.FIREBASE_CLIENT_EMAIL,
+    aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+    iat: now,
+    exp: now + 3600,
+    uid
+  };
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+  return jwt.sign(payload, privateKey, { algorithm: 'RS256' });
+}
 
 export default async function handler(req, res) {
+  if (initError) {
+    return res.status(500).json({ error: 'Firebase Admin เริ่มต้นไม่สำเร็จ', detail: initError });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'ใช้ได้เฉพาะ POST เท่านั้น' });
   }
@@ -27,7 +52,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ขั้นที่ 1: ส่ง idToken ไปให้ LINE ตรวจสอบว่าเป็นของจริง ไม่ได้ปลอมมา
     const params = new URLSearchParams();
     params.append('id_token', idToken);
     params.append('client_id', process.env.LINE_CHANNEL_ID);
@@ -43,25 +67,17 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'LINE token ไม่ถูกต้อง', detail: verifyData });
     }
 
-    // ขั้นที่ 2: ใช้ LINE user id (sub) มาสร้าง uid ของ Firebase แบบคงที่
     const lineUserId = verifyData.sub;
     const uid = `line_${lineUserId}`;
 
-    // ขั้นที่ 3: เช็คว่าเคยมีบัญชีนี้ใน Firestore หรือยัง
     const userDocRef = adminDb.collection('users').doc(uid);
     const userDoc = await userDocRef.get();
     const isNewUser = !userDoc.exists;
 
-    // ขั้นที่ 4: ออก "ตั๋วเข้า Firebase" (Custom Token) ให้ uid นี้
-    const customToken = await adminAuth.createCustomToken(uid);
+    const customToken = createFirebaseCustomToken(uid);
 
-    return res.status(200).json({
-      customToken,
-      isNewUser,
-      lineName: verifyData.name || ''
-    });
+    return res.status(200).json({ customToken, isNewUser, lineName: verifyData.name || '' });
   } catch (err) {
-    console.error('LINE login error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
