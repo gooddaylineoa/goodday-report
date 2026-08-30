@@ -233,12 +233,40 @@ document.getElementById('map-mode-marker').onclick = () => setMapMode('marker');
 document.getElementById('map-mode-heatmap').onclick = () => setMapMode('heatmap');
 document.getElementById('map-mode-cluster').onclick = () => setMapMode('cluster');
 
-// ================= ฟอร์มแจ้งปัญหา =================
+// ================= ฟอร์มแจ้งปัญหา (ดีไซน์ใหม่) =================
+
+const reportCategories = [
+  { id: 'road', label: 'ถนน/ทางเดิน', icon: 'fa-road' },
+  { id: 'water', label: 'น้ำท่วม/ท่อระบาย', icon: 'fa-droplet' },
+  { id: 'electric', label: 'ไฟฟ้า/แสงสว่าง', icon: 'fa-lightbulb' },
+  { id: 'waste', label: 'ขยะ/ความสะอาด', icon: 'fa-trash-can' },
+  { id: 'safety', label: 'ความปลอดภัย', icon: 'fa-shield-halved' },
+  { id: 'other', label: 'อื่นๆ', icon: 'fa-ellipsis' }
+];
+let selectedCategory = null;
+
+function renderReportCategoryGrid() {
+  document.getElementById('report-category-grid').innerHTML = reportCategories.map(c => `
+    <button data-cat="${c.id}" class="report-cat-btn flex flex-col items-center gap-2 p-4 rounded-2xl border-2 ${selectedCategory === c.id ? 'theme-pink text-white border-transparent' : 'bg-gray-50 text-gray-600 border-gray-100'}">
+      <i class="fa-solid ${c.icon} text-2xl"></i>
+      <span class="text-sm font-bold text-center">${c.label}</span>
+    </button>
+  `).join('');
+
+  document.querySelectorAll('.report-cat-btn').forEach(btn => {
+    btn.onclick = () => {
+      selectedCategory = btn.dataset.cat;
+      renderReportCategoryGrid();
+    };
+  });
+}
 
 let reportMap = null;
 let reportMarker = null;
 let selectedLat = null;
 let selectedLng = null;
+let pendingLat = null;
+let pendingLng = null;
 let selectedImageFile = null;
 
 document.getElementById('report-tab-home').onclick = () => { setTab('home'); showView('home-view'); };
@@ -248,34 +276,45 @@ document.getElementById('report-tab-history').onclick = () => { setTab('history'
 document.getElementById('tab-report').onclick = () => {
   setTab('report');
   showView('report-view');
-  initReportMap();
+  renderReportCategoryGrid();
 };
 
-function initReportMap() {
-  if (reportMap) {
-    setTimeout(() => reportMap.invalidateSize(), 100);
-    return;
-  }
-  reportMap = L.map('report-map').setView([13.7563, 100.5018], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-  }).addTo(reportMap);
+// --- ป็อปอัพแผนที่ปักหมุด ---
+document.getElementById('btn-open-location-modal').onclick = () => {
+  const modal = document.getElementById('location-modal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
 
-  reportMap.on('click', (e) => {
-    setReportLocation(e.latlng.lat, e.latlng.lng);
-  });
-}
+  setTimeout(() => {
+    if (!reportMap) {
+      reportMap = L.map('report-map').setView([13.7563, 100.5018], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(reportMap);
+      reportMap.on('click', (e) => setPendingLocation(e.latlng.lat, e.latlng.lng));
+    }
+    reportMap.invalidateSize();
+    if (selectedLat !== null) setPendingLocation(selectedLat, selectedLng);
+  }, 150);
+};
 
-function setReportLocation(lat, lng) {
-  selectedLat = lat;
-  selectedLng = lng;
+document.getElementById('btn-close-location-modal').onclick = () => {
+  const modal = document.getElementById('location-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+};
+
+function setPendingLocation(lat, lng) {
+  pendingLat = lat;
+  pendingLng = lng;
 
   if (reportMarker) reportMap.removeLayer(reportMarker);
   reportMarker = L.marker([lat, lng]).addTo(reportMap);
   reportMap.setView([lat, lng], 15);
 
-  document.getElementById('report-location-label').innerHTML =
-    `<i class="fa-solid fa-check-circle text-emerald-500 mr-1"></i> ปักหมุดแล้ว: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const confirmBtn = document.getElementById('btn-confirm-location');
+  confirmBtn.disabled = false;
+  confirmBtn.className = 'w-full theme-pink text-white py-3.5 rounded-xl font-black text-lg';
 }
 
 document.getElementById('btn-use-current-location').onclick = () => {
@@ -285,17 +324,24 @@ document.getElementById('btn-use-current-location').onclick = () => {
   }
   showLoading('กำลังค้นหาตำแหน่งของคุณ...');
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      hideLoading();
-      setReportLocation(pos.coords.latitude, pos.coords.longitude);
-    },
-    (err) => {
-      hideLoading();
-      showToast('ไม่สามารถระบุตำแหน่งได้ กรุณาแตะบนแผนที่แทน', 'error');
-    }
+    (pos) => { hideLoading(); setPendingLocation(pos.coords.latitude, pos.coords.longitude); },
+    () => { hideLoading(); showToast('ไม่สามารถระบุตำแหน่งได้ กรุณาแตะบนแผนที่แทน', 'error'); }
   );
 };
 
+document.getElementById('btn-confirm-location').onclick = () => {
+  if (pendingLat === null) return;
+  selectedLat = pendingLat;
+  selectedLng = pendingLng;
+
+  document.getElementById('report-location-label').innerHTML =
+    `<i class="fa-solid fa-check-circle text-emerald-500 mr-1"></i> ปักหมุดแล้ว: ${selectedLat.toFixed(5)}, ${selectedLng.toFixed(5)}`;
+  document.getElementById('report-location-label').className = 'mt-3 bg-emerald-50 rounded-xl p-3 text-base text-emerald-700 font-bold text-center';
+
+  document.getElementById('btn-close-location-modal').click();
+};
+
+// --- อัปโหลดรูป ---
 document.getElementById('report-image-preview-box').onclick = () => {
   document.getElementById('report-image-input').click();
 };
@@ -314,42 +360,36 @@ document.getElementById('report-image-input').onchange = (e) => {
   reader.readAsDataURL(file);
 };
 
+// --- ส่งฟอร์ม ---
 document.getElementById('btn-submit-report').onclick = async () => {
   const title = document.getElementById('report-title').value.trim();
-  const category = document.getElementById('report-category').value;
   const description = document.getElementById('report-description').value.trim();
   const errBox = document.getElementById('report-error');
 
   if (!selectedImageFile) {
     errBox.innerText = 'กรุณาถ่ายรูป/เลือกภาพประกอบก่อน';
-    errBox.classList.remove('hidden');
-    return;
+    errBox.classList.remove('hidden'); return;
   }
-  if (!category) {
+  if (!selectedCategory) {
     errBox.innerText = 'กรุณาเลือกหมวดหมู่ปัญหา';
-    errBox.classList.remove('hidden');
-    return;
+    errBox.classList.remove('hidden'); return;
+  }
+  if (selectedLat === null) {
+    errBox.innerText = 'กรุณาปักหมุดสถานที่เกิดเหตุ';
+    errBox.classList.remove('hidden'); return;
   }
   if (!title) {
     errBox.innerText = 'กรุณากรอกหัวข้อปัญหา';
-    errBox.classList.remove('hidden');
-    return;
-  }
-  if (selectedLat === null || selectedLng === null) {
-    errBox.innerText = 'กรุณาปักหมุดสถานที่เกิดเหตุ';
-    errBox.classList.remove('hidden');
-    return;
+    errBox.classList.remove('hidden'); return;
   }
   if (!description) {
     errBox.innerText = 'กรุณากรอกรายละเอียดปัญหา';
-    errBox.classList.remove('hidden');
-    return;
+    errBox.classList.remove('hidden'); return;
   }
   errBox.classList.add('hidden');
 
   showLoading('กำลังอัปโหลดรูปภาพ...');
   try {
-    // อัปโหลดรูปขึ้น Cloudinary ก่อน
     const formData = new FormData();
     formData.append('file', selectedImageFile);
     formData.append('upload_preset', 'goodday_unsigned');
@@ -371,7 +411,7 @@ document.getElementById('btn-submit-report').onclick = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        uid: currentUid, title, category, description,
+        uid: currentUid, title, category: selectedCategory, description,
         imageUrl: uploadData.secure_url,
         lat: selectedLat, lng: selectedLng
       })
@@ -389,13 +429,14 @@ document.getElementById('btn-submit-report').onclick = async () => {
 
     // เคลียร์ฟอร์ม
     document.getElementById('report-title').value = '';
-    document.getElementById('report-category').value = '';
     document.getElementById('report-description').value = '';
     document.getElementById('report-image-preview').classList.add('hidden');
     document.getElementById('report-image-placeholder').classList.remove('hidden');
-    document.getElementById('report-location-label').innerText = 'ยังไม่ได้ปักหมุด';
-    selectedLat = null; selectedLng = null; selectedImageFile = null;
+    document.getElementById('report-location-label').innerText = 'พิกัด GPS จะแสดงที่นี่...';
+    document.getElementById('report-location-label').className = 'mt-3 bg-gray-50 rounded-xl p-3 text-base text-gray-400 text-center';
+    selectedCategory = null; selectedLat = null; selectedLng = null; selectedImageFile = null;
     if (reportMarker) { reportMap.removeLayer(reportMarker); reportMarker = null; }
+    renderReportCategoryGrid();
 
   } catch (err) {
     hideLoading();
@@ -406,5 +447,4 @@ document.getElementById('btn-submit-report').onclick = async () => {
 document.getElementById('btn-report-done').onclick = () => {
   setTab('history');
   showView('history-view');
-  // เฟส 3 จะเติมฟังก์ชันโหลดประวัติตรงนี้
 };
