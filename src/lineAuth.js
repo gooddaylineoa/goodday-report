@@ -1,7 +1,7 @@
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from './firebase.js';
 
-const LIFF_ID = '2009970638-ahXNwwhW'; // 🔴 แทนที่ตรงนี้ด้วย LIFF ID จริงของพี่
+const LIFF_ID = '2011339522-ZuDY23iR'; // 🔴 แทนที่ตรงนี้ด้วย LIFF ID จริงของพี่
 const LOGIN_ENDPOINT = '/api/line-login';
 
 export async function initLineAuth() {
