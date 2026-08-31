@@ -674,54 +674,66 @@ async function loadAdminReports() {
   const container = document.getElementById('admin-reports-list');
   container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">กำลังโหลด...</p>';
 
-  const q = query(collection(db, 'reports'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
+  try {
+    const res = await fetch('/api/admin-get-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminSecret: adminSecretStored })
+    });
+    const data = await res.json();
 
-  const reports = [];
-  snap.forEach(d => reports.push({ id: d.id, ...d.data() }));
+    if (!res.ok) {
+      container.innerHTML = `<p class="text-center text-red-500 text-lg py-8">${data.error || 'โหลดข้อมูลไม่สำเร็จ'}</p>`;
+      return;
+    }
 
-  if (reports.length === 0) {
-    container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">ยังไม่มีเรื่องแจ้ง</p>';
-    return;
-  }
+    const reports = data.reports;
 
-  container.innerHTML = reports.map(r => `
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-      <div class="flex gap-3 mb-3">
-        <img src="${r.imageUrl || ''}" class="w-16 h-16 rounded-xl object-cover shrink-0 bg-gray-100">
-        <div class="flex-1">
-          <h4 class="font-black text-gray-800 text-base leading-tight mb-1">${r.title}</h4>
-          <p class="text-sm text-gray-400">${r.reportCode} | ${categoryLabels[r.category] || r.category}</p>
+    if (reports.length === 0) {
+      container.innerHTML = '<p class="text-center text-gray-400 text-lg py-8">ยังไม่มีเรื่องแจ้ง</p>';
+      return;
+    }
+
+    container.innerHTML = reports.map(r => `
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <div class="flex gap-3 mb-3">
+          <img src="${r.imageUrl || ''}" class="w-16 h-16 rounded-xl object-cover shrink-0 bg-gray-100">
+          <div class="flex-1">
+            <h4 class="font-black text-gray-800 text-base leading-tight mb-1">${r.title}</h4>
+            <p class="text-sm text-gray-400">${r.reportCode} | ${categoryLabels[r.category] || r.category}</p>
+          </div>
         </div>
+        <p class="text-sm text-gray-600 mb-3">${r.description}</p>
+        <select class="form-input admin-status-select" data-report-id="${r.id}">
+          <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>รอรับเรื่อง</option>
+          <option value="inprogress" ${r.status === 'inprogress' ? 'selected' : ''}>กำลังดำเนินการ</option>
+          <option value="resolved" ${r.status === 'resolved' ? 'selected' : ''}>เสร็จสิ้น</option>
+          <option value="cancelled" ${r.status === 'cancelled' ? 'selected' : ''}>ยกเลิก</option>
+        </select>
       </div>
-      <p class="text-sm text-gray-600 mb-3">${r.description}</p>
-      <select class="form-input admin-status-select" data-report-id="${r.id}">
-        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>รอรับเรื่อง</option>
-        <option value="inprogress" ${r.status === 'inprogress' ? 'selected' : ''}>กำลังดำเนินการ</option>
-        <option value="resolved" ${r.status === 'resolved' ? 'selected' : ''}>เสร็จสิ้น</option>
-        <option value="cancelled" ${r.status === 'cancelled' ? 'selected' : ''}>ยกเลิก</option>
-      </select>
-    </div>
-  `).join('');
+    `).join('');
 
-  document.querySelectorAll('.admin-status-select').forEach(select => {
-    select.onchange = async () => {
-      const reportId = select.dataset.reportId;
-      const newStatus = select.value;
+    document.querySelectorAll('.admin-status-select').forEach(select => {
+      select.onchange = async () => {
+        const reportId = select.dataset.reportId;
+        const newStatus = select.value;
 
-      showLoading('กำลังอัปเดตสถานะและแจ้งเตือน...');
-      const res = await fetch('/api/admin-update-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminSecret: adminSecretStored, reportId, newStatus })
-      });
-      hideLoading();
+        showLoading('กำลังอัปเดตสถานะและแจ้งเตือน...');
+        const updateRes = await fetch('/api/admin-update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminSecret: adminSecretStored, reportId, newStatus })
+        });
+        hideLoading();
 
-      if (res.ok) {
-        showToast('อัปเดตสถานะสำเร็จ ส่งแจ้งเตือนแล้ว', 'success');
-      } else {
-        showToast('อัปเดตไม่สำเร็จ', 'error');
-      }
-    };
-  });
+        if (updateRes.ok) {
+          showToast('อัปเดตสถานะสำเร็จ ส่งแจ้งเตือนแล้ว', 'success');
+        } else {
+          showToast('อัปเดตไม่สำเร็จ', 'error');
+        }
+      };
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="text-center text-red-500 text-lg py-8">เกิดข้อผิดพลาด กรุณาลองใหม่</p>';
+  }
 }
