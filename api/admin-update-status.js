@@ -23,7 +23,7 @@ const statusMessages = {
 };
 
 async function sendLinePush(lineUserId, message) {
-  await fetch('https://api.line.me/v2/bot/message/push', {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -34,6 +34,9 @@ async function sendLinePush(lineUserId, message) {
       messages: [{ type: 'text', text: message }]
     })
   });
+
+  const resultText = await res.text();
+  return { ok: res.ok, status: res.status, body: resultText };
 }
 
 export default async function handler(req, res) {
@@ -60,14 +63,18 @@ export default async function handler(req, res) {
     await adminDb.collection('users').doc(uid).collection('myReports').doc(reportId).update({ status: newStatus });
 
     // ส่งแจ้งเตือนผ่าน LINE (ถ้า uid มาจาก LINE login เท่านั้น)
+    let pushResult = null;
+
     if (uid.startsWith('line_')) {
       const lineUserId = uid.replace('line_', '');
       const statusText = statusMessages[newStatus] || newStatus;
-      await sendLinePush(
+      pushResult = await sendLinePush(
         lineUserId,
         `📢 อัปเดตสถานะแจ้งเหตุ\n\nเรื่อง: ${data.title}\nรหัส: ${data.reportCode}\nสถานะใหม่: ${statusText}\n\nเปิดแอปเพื่อดูรายละเอียดเพิ่มเติมได้เลยครับ`
       );
     }
+
+    return res.status(200).json({ success: true, pushResult });
 
     return res.status(200).json({ success: true });
   } catch (err) {

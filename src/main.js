@@ -724,12 +724,14 @@ async function loadAdminReports() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ adminSecret: adminSecretStored, reportId, newStatus })
         });
+        const updateData = await updateRes.json();
         hideLoading();
 
         if (updateRes.ok) {
-          showToast('อัปเดตสถานะสำเร็จ ส่งแจ้งเตือนแล้ว', 'success');
+          alert('DEBUG pushResult: ' + JSON.stringify(updateData.pushResult));
+          showToast('อัปเดตสถานะสำเร็จ', 'success');
         } else {
-          showToast('อัปเดตไม่สำเร็จ', 'error');
+          showToast('อัปเดตไม่สำเร็จ: ' + (updateData.error || ''), 'error');
         }
       };
     });
