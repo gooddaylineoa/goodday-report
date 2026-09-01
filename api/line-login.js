@@ -74,6 +74,27 @@ export default async function handler(req, res) {
     const userDoc = await userDocRef.get();
     const isNewUser = !userDoc.exists;
 
+    // 🆕 ถ้าเป็นคนใหม่ในระบบแจ้งเหตุ (uid นี้ยังไม่เคยมีใน goodday-report)
+    // สร้างโปรไฟล์อัตโนมัติทันที ไม่ต้องพึ่ง member-system เลย
+    if (isNewUser) {
+      let memberId, exists = true;
+      while (exists) {
+        const rand = Math.floor(100000 + Math.random() * 900000);
+        memberId = 'GD-' + rand;
+        const dupSnap = await adminDb.collection('users').where('memberId', '==', memberId).get();
+        exists = !dupSnap.empty;
+      }
+
+      await userDocRef.set({
+        name: verifyData.name || 'สมาชิก Goodday',
+        profileImage: verifyData.picture || '',
+        memberId,
+        profileComplete: true,
+        pdpaAccepted: false,
+        createdAt: new Date()
+      });
+    }
+
     const customToken = createFirebaseCustomToken(uid);
 
     return res.status(200).json({ customToken, isNewUser, lineName: verifyData.name || '' });
